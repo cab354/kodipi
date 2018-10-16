@@ -1,0 +1,273 @@
+- name: Set up OpenVPN and ufw
+  hosts: all
+  user: osmc
+  gather_facts: no
+
+  vars_files:
+  - vars/secure.yml
+
+  pre_tasks:
+  - set_fact:
+      ansible_become_pass: "{{ sudo_pass }}"
+
+  tasks:
+  - name: Customize bash profile
+    lineinfile:
+      path: ~/.bashrc
+      state: present
+      line: "alias ll='ls -aGFhl'"
+
+  - name: Make sure openvpn and unzip are updated and installed.
+    apt:
+      name: "{{ packages }}"
+      force_apt_get: true
+      update_cache: true
+    vars:
+      packages:
+      - openvpn
+      - unzip
+      - ufw
+    environment:
+      PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    become: yes
+    become_user: root
+  
+  - name: Create temp openvpn directory
+    file:
+      path: /tmp/openvpn
+      state: directory
+
+  - name: download and unzip openvpn config files
+    unarchive:
+      src: https://www.privateinternetaccess.com/openvpn/openvpn.zip
+      dest: /tmp/openvpn
+      remote_src: yes
+
+  - name: rename openvpn config file to .conf
+    command: 'mv "/tmp/openvpn/US Midwest.ovpn" /tmp/openvpn/openvpn.conf'
+
+  - name: Create PIA auth.txt file
+    lineinfile:
+      path: /tmp/openvpn/auth.txt
+      state: present
+      create: yes
+      mode: 600
+      line: "{{ pia.user }}"
+    become: yes
+    become_user: root
+
+  - name: Create PIA auth.txt file
+    lineinfile:
+      path: /tmp/openvpn/auth.txt
+      state: present
+      line: "{{ pia.pass }}"
+    become: yes
+    become_user: root
+
+  - name: Add custom config to openvpn.conf
+    blockinfile:
+      path: /tmp/openvpn/openvpn.conf
+      state: present
+      block: |
+        auth-user-pass auth.txt
+        keepalive 10 60
+        log-append /var/log/openvpn.log
+        script-security 2
+        up /etc/openvpn/update-resolv-conf
+        down /etc/openvpn/update-resolv-conf
+  
+  - name: copy openvpn config file to /etc/openvpn
+    copy:
+      src: /tmp/openvpn/openvpn.conf
+      dest: /etc/openvpn/openvpn.conf
+      remote_src: yes
+    become: yes
+    become_user: root
+
+  - name: copy auth.txt to /etc/openvpn
+    copy:
+      src: /tmp/openvpn/auth.txt
+      dest: /etc/openvpn/auth.txt
+      remote_src: yes
+    become: yes
+    become_user: root
+
+  - name: Copy cert to /etc/openvpn
+    copy:
+      src: /tmp/openvpn/ca.rsa.2048.crt
+      dest: /etc/openvpn/ca.rsa.2048.crt
+      remote_src: yes
+    become: yes
+    become_user: root
+
+  - name: Copy key to /etc/openvpn
+    copy:
+      src: /tmp/openvpn/crl.rsa.2048.pem
+      dest: /etc/openvpn/crl.rsa.2048.pem
+      remote_src: yes
+    become: yes
+    become_user: root
+  
+  - name: Ensure autostart line is in /etc/default/openvpn
+    lineinfile:
+      path: /etc/default/openvpn
+      state: present
+      line: AUTOSTART="openvpn"
+    become: yes
+    become_user: root
+
+  - name: Ensure restart openvpn server if it dies is configured
+    lineinfile:
+      path: /lib/systemd/system/openvpn@.service
+      state: present
+      line: Restart=always
+      insertafter: '^\[Service\]'
+    become: yes
+    become_user: root
+
+  - name: Ensure restart openvpn server if it dies is configured
+    lineinfile:
+      path: /lib/systemd/system/openvpn@.service
+      state: present
+      line: RestartSec=3
+      insertafter: '^Restart=always'
+    become: yes
+    become_user: root
+
+  - name: reload daemons and restart openvpn
+    systemd:
+      state: restarted
+      daemon_reload: yes
+      name: openvpn
+    become: yes
+    become_user: root
+
+  - name: Allow all openvpn traffic on tun0
+    ufw:
+      rule: allow
+      interface: tun0
+      direction: in
+    become: yes
+    become_user: root
+
+  - name: Allow all openvpn traffic on tun0
+    ufw:
+      rule: allow
+      interface: tun0
+      direction: out
+    become: yes
+    become_user: root
+
+  - name: Allow all DNS outbound traffic on eth0
+    ufw:
+      rule: allow
+      interface: eth0
+      direction: out
+      port: 53
+    become: yes
+    become_user: root
+
+  - name: Allow all DNS outbound traffic on wlan0
+    ufw:
+      rule: allow
+      interface: wlan0
+      direction: out
+      port: 53
+    become: yes
+    become_user: root
+
+  - name: Allow all openvpn outbound traffic on eth0
+    ufw:
+      rule: allow
+      interface: eth0
+      direction: out
+      port: 1198
+    become: yes
+    become_user: root
+
+  - name: Allow all openvpn outbound traffic on wlan0
+    ufw:
+      rule: allow
+      interface: wlan0
+      direction: out
+      port: 1198
+    become: yes
+    become_user: root
+
+  - name: Allow local traffic in on eth0
+    ufw:
+      rule: allow
+      interface: eth0
+      direction: in
+      from_ip: 192.168.1.0/24
+      to_ip: any
+    become: yes
+    become_user: root
+
+  - name: Allow local traffic in on wlan0
+    ufw:
+      rule: allow
+      interface: wlan0
+      direction: in
+      from_ip: 192.168.1.0/24
+      to_ip: any
+    become: yes
+    become_user: root
+
+  - name: Allow local traffic out on eth0
+    ufw:
+      rule: allow
+      interface: eth0
+      direction: out
+      from_ip: any
+      to_ip: 192.168.1.0/24
+    become: yes
+    become_user: root
+
+  - name: Allow local traffic out on wlan0
+    ufw:
+      rule: allow
+      interface: wlan0
+      direction: out
+      from_ip: any
+      to_ip: 192.168.1.0/24
+    become: yes
+    become_user: root
+
+  - name: Block everything else inbound on eth0
+    ufw:
+      rule: deny
+      interface: eth0
+      direction: in
+    become: yes
+    become_user: root
+
+  - name: Block everything else inbound on wlan0
+    ufw:
+      rule: deny
+      interface: wlan0
+      direction: in
+    become: yes
+    become_user: root
+
+  - name: Block everything else outbound on eth0
+    ufw:
+      rule: deny
+      interface: eth0
+      direction: out
+    become: yes
+    become_user: root
+
+  - name: Block everything else outbound on wlan0
+    ufw:
+      rule: deny
+      interface: wlan0
+      direction: out
+    become: yes
+    become_user: root
+
+  - name: Allow everything and enable UFW
+    ufw:
+      state: enabled
+    become: yes
+    become_user: root
