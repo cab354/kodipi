@@ -27,6 +27,9 @@
       - openvpn
       - unzip
       - ufw
+      - transmission-daemon
+      - transmission-cli 
+      - transmission-common
     environment:
       PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     become: yes
@@ -44,7 +47,7 @@
       remote_src: yes
 
   - name: rename openvpn config file to .conf
-    command: 'mv "/tmp/openvpn/US Midwest.ovpn" /tmp/openvpn/openvpn.conf'
+    command: 'mv "/tmp/openvpn/US Chicago" /tmp/openvpn/openvpn.conf'
 
   - name: Create PIA auth.txt file
     lineinfile:
@@ -271,3 +274,26 @@
       state: enabled
     become: yes
     become_user: root
+
+  - name: Stop transmission-daemon
+    systemd:
+      state: stopped
+      name: transmission-daemon
+    become: yes
+    become_user: root
+
+  - name: Update transmission to allow local remote access
+    lineinfile:
+      path: /etc/transmission-daemon/settings.json
+      regex: '^\s*\"rpc-whitelist\"\:\s\"127\.0\.0\.1\"\,'
+      state: present
+      line: '    “rpc-whitelist”: “127.0.0.1,192.168.1.*”,'
+    become: yes
+    become_user: root
+
+  - name: Update transmission download directory
+    lineinfile:
+      path: /etc/transmission-daemon/settings.json
+      regex: '^\s*\"download-dir\":\s"\/var\/lib\/transmission-daemon\/downloads\"\,'
+      state: present
+      line: '    "download-dir": "/var/lib/transmission-daemon/downloads",'
