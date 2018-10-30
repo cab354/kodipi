@@ -34,7 +34,15 @@
       PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     become: yes
     become_user: root
-  
+
+############ Create filesystems #################
+  - name: Create /mnt/library
+
+
+############ Create filesystems #################
+
+
+############ Open VPN config ####################
   - name: Create temp openvpn directory
     file:
       path: /tmp/openvpn
@@ -144,6 +152,9 @@
       name: openvpn
     become: yes
     become_user: root
+############ Open VPN config ####################
+
+############ Firewall Configuration #############
 
   - name: Allow all openvpn traffic on tun0
     ufw:
@@ -274,6 +285,8 @@
       state: enabled
     become: yes
     become_user: root
+
+############ Firewall Configuration #############
 
   - name: Stop transmission-daemon
     systemd:
